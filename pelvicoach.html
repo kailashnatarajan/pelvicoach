@@ -21,14 +21,27 @@ label{display:block;margin:8px 0 2px}input[type=range]{width:100%}canvas{width:1
 .tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:16px;min-width:640px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 .OK{color:var(--ok)}.MISS,.COMPENSATED{color:var(--warn)}.INVALID{color:var(--bad)}.cmp{margin-top:12px;padding:12px;border-radius:10px;background:var(--soft)}
 textarea{width:100%;height:110px;margin-top:8px;font:13px monospace;display:none}small{color:var(--mut)}
+
+.sx-ban{margin:0 0 12px;padding:12px 14px;border-radius:10px;border:2px solid var(--warn);background:color-mix(in srgb,var(--warn) 14%,var(--card));font-weight:700}
+.sx-err,.sx-warn{margin-top:10px;padding:10px 14px;border-radius:10px}.sx-err{background:color-mix(in srgb,var(--bad) 16%,var(--card));color:var(--bad)}.sx-warn{background:color-mix(in srgb,var(--warn) 16%,var(--card));color:var(--ink)}.sx-err ul,.sx-warn ul{margin:6px 0;padding-left:20px}
+canvas.sx{height:170px;margin:6px 0 0;touch-action:pan-y;cursor:crosshair}.sx-t{margin:18px 0 0;font-size:19px}.sx-d{margin:2px 0 4px;color:var(--mut);font-size:16px;max-width:90ch}.sx-leg{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:15px;color:var(--mut)}.sx-leg i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}.sx-leg i.bd{height:12px;border:0;background:color-mix(in srgb,var(--acc) 25%,var(--card))}#sxHover{color:var(--ink);font-size:17px;margin-top:10px}
+.sx-fb{margin-top:12px;padding:12px;border-radius:10px;background:var(--soft)}.sx-fb.ok{background:color-mix(in srgb,var(--ok) 16%,var(--card))}.sx-fb.warn{background:color-mix(in srgb,var(--warn) 18%,var(--card))}
+#sxCfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px}#sxCfg input{width:100%;font:inherit;padding:8px;border-radius:8px;border:2px solid var(--line);background:var(--card);color:var(--ink)}
+details{margin-top:12px}summary{cursor:pointer;font-weight:700}[hidden]{display:none!important}
+:root{--c-raw:#8e3fb0;--c-proc:#1f6feb;--c-env:#0d8a5f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--c-raw:#e08bff;--c-proc:#5fb0ff;--c-env:#4fe0a8}}
+:root[data-theme="dark"]{--c-raw:#e08bff;--c-proc:#5fb0ff;--c-env:#4fe0a8}
+.sx-t b::before{content:"";display:inline-block;width:16px;height:16px;border-radius:4px;margin-right:9px;vertical-align:-2px;background:var(--cc)}
+.sx-now{margin:4px 0 8px;padding:10px 14px;border-radius:10px;background:var(--soft);border-left:6px solid var(--acc)}.sx-now.fail{background:color-mix(in srgb,var(--bad) 18%,var(--card));border-left-color:var(--bad)}
+.sx-now.flash{animation:sxf .9s ease-out}@keyframes sxf{from{background:color-mix(in srgb,var(--ok) 45%,var(--card))}}@media (prefers-reduced-motion:reduce){.sx-now.flash{animation:none}}
 </style></head><body>
 <header><div><h1>PelviCoach</h1><p>Adaptive pelvic floor biofeedback that ignores bad signals and catches compensation. Biofeedback only: no electrical stimulation.</p></div>
-<div><label for="mode" style="display:inline">Signal source</label> <select id="mode"><option value="sim">Built-in simulator</option><option value="live">Wokwi live (MQTT)</option></select> <button id="bMq" hidden>Connect</button></div></header>
+<div><label for="mode" style="display:inline">Signal source</label> <select id="mode"><option value="sim">Built-in simulator</option><option value="live">Wokwi live (MQTT)</option><option value="replay">Imported session replay</option></select> <button id="bMq" hidden>Connect</button></div></header>
 <main>
 <section class="card" aria-label="Patient screen"><h2>Patient screen</h2><div id="msg" role="status" aria-live="polite">Press “Calibrate”, then “Start session”</div>
 <div id="stage"><div id="tgt"></div><div id="orb"></div></div><div id="info"></div>
 <div class="row"><button id="bCal">1. Calibrate</button><button id="bStart" class="p">2. Start session</button><button id="bDemo">Run auto demo</button></div></section>
-<section class="card" aria-label="Signal simulator"><h2>Signal simulator</h2>
+<section class="card" aria-label="Signal simulator"><h2>Signal simulator</h2><p id="srcNote" hidden style="margin:0 0 8px;color:var(--mut);font-size:16px;border-left:5px solid var(--acc);padding-left:10px">Source: imported session replay (synthetic). Squeeze and signal quality come from the replayed file. The file has one EMG channel and no abdominal channel, so use the abdominal slider to simulate co-activation.</p>
 <label for="sPf">Pelvic floor squeeze (<span id="vPf">5</span>%)</label><input id="sPf" type="range" min="0" max="100" value="5">
 <label for="sAb">Abdominal activity (<span id="vAb">3</span>%)</label><input id="sAb" type="range" min="0" max="100" value="3">
 <div class="row"><button id="f1">Electrode lift-off</button><button id="f2">Mains (50 Hz) noise</button></div>
@@ -38,12 +51,36 @@ textarea{width:100%;height:110px;margin-top:8px;font:13px monospace;display:none
 <section class="card wide" aria-label="Clinician log"><h2>Clinician log</h2><div class="tw"><table><thead><tr><th>Attempt</th><th>Result</th><th>Target</th><th>Hold</th><th>Avg squeeze</th><th>Why (decision)</th><th>Amplitude-only would say</th></tr></thead><tbody id="tb"></tbody></table></div>
 <div class="cmp" id="cmp">Run a session to compare against a plain amplitude-only trainer.</div>
 <div class="row"><button id="bCsv">Show CSV</button></div><textarea id="ta" readonly aria-label="CSV export"></textarea></section>
+<section class="card wide" aria-label="Simulated EMG session"><h2>Simulated EMG session (file import)</h2>
+<div class="sx-ban" role="note">Synthetic data. Generated by a simulation, not measured from any person. Not clinically validated and not for diagnosis.</div>
+<div class="row" style="margin-top:0"><button id="bLoadSx" class="p">Load Simulated EMG Session</button><button id="bSxDemo">Show bundled example</button><button id="bSxRand" class="p">Generate random synthetic case</button><label for="sxSeed" style="margin:0;align-self:center">Seed (optional)</label><input id="sxSeed" type="number" min="0" step="1" placeholder="random" style="width:9em;font:inherit;padding:9px;border-radius:10px;border:2px solid var(--line);background:var(--card);color:var(--ink)"><input id="sxFile" type="file" accept=".json,application/json" hidden aria-label="Choose a Colab JSON export"></div>
+<div id="sxMsg" aria-live="polite"></div>
+<p id="sxEmpty" style="color:var(--mut)">Choose a JSON file exported from the Colab notebook. It is read in your browser only and is never uploaded.</p>
+<div id="sxBody" hidden>
+<div class="sx-now" id="sxNow" role="status" aria-live="polite"></div>
+<div class="kv" id="sxMeta"></div>
+<div class="tw"><table style="min-width:420px;margin-top:10px"><caption style="text-align:left;color:var(--mut)">Simulated contraction intervals (from the file's metadata)</caption><thead><tr><th>#</th><th>Start</th><th>End</th><th>Length</th><th>Simulated amplitude</th></tr></thead><tbody id="sxIv"></tbody></table></div>
+<div class="row"><button id="sxPlay" class="p">Play replay</button><button id="sxStop">Back to start</button><label for="sxSpeed" style="margin:0;align-self:center">Speed</label><select id="sxSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div>
+<label for="sxScrub">Replay position</label><input id="sxScrub" type="range" min="0" max="1" step="0.001" value="0">
+<div class="kv"><span id="sxStatus"></span></div><small>This moves through a stored file. It is not a live sensor recording.</small>
+<p class="sx-d" style="margin-top:14px"><b>How to read these charts.</b> The x-axis is time in seconds. The y-axis is signal amplitude in arbitrary units (the file does not state a physical unit). All three charts share the same time axis, so a moment lines up vertically across them.</p>
+<div class="sx-leg"><span><i class="bd"></i>Shaded band = simulated contraction interval (from the file)</span><span><i style="border-color:var(--warn)"></i>Replay position</span><span><i style="border-color:var(--ink)"></i>Cursor (hover)</span><span>Full-strength trace = replayed so far, slightly lighter = not yet replayed</span></div>
+<div class="sx-t" style="--cc:var(--c-raw)"><b>1. Raw contaminated EMG</b></div><p class="sx-d">The simulated electrode signal after the simulator added artifacts (listed above, for example baseline drift and 50 Hz powerline interference). It shows what an unfiltered sensor could deliver. Interference and drift sit on top of the muscle activity, so amplitude alone is not a reliable cue.</p><canvas class="sx" id="sxC_raw" aria-label="Raw contaminated EMG, amplitude in arbitrary units against time in seconds"></canvas>
+<div class="sx-t" style="--cc:var(--c-proc)"><b>2. Processed EMG</b></div><p class="sx-d">The same signal after the simulator's filtering step (Colab notebook, or the in-browser generator for random cases). Artifacts are reduced, so the bursts of activity during the shaded contraction intervals stand out more clearly.</p><canvas class="sx" id="sxC_processed" aria-label="Processed EMG, amplitude in arbitrary units against time in seconds"></canvas>
+<div class="sx-t" style="--cc:var(--c-env)"><b>3. Extracted activity envelope</b></div><p class="sx-d">A smooth curve of how strong the signal is over time, computed by the simulator from the processed EMG. It rises while the simulated muscle is active. The dashed line is the <i>illustrative level</i>: an adjustable demo threshold (see rule settings), not a clinical criterion.</p><canvas class="sx" id="sxC_envelope" aria-label="Activity envelope, amplitude in arbitrary units against time in seconds"></canvas>
+<div class="kv" id="sxHover" aria-live="off"></div>
+<div class="sx-fb" id="sxFb" role="status" aria-live="polite"></div>
+<div class="kv" id="sxSum"></div><small id="sxDisc"></small>
+<details><summary>Illustrative rule settings</summary><p style="color:var(--mut);font-size:16px">Adjustable demo thresholds for signal-quality flags and the amplitude level. They are not clinical criteria.</p><div id="sxCfg"></div><div class="row"><button id="sxReset">Reset to defaults</button></div></details>
+</div></section>
 </main>
+<script src="js/session-schema.js"></script><script src="js/signal-feedback.js"></script><script src="js/data-sources.js"></script>
 <script>
 const $=s=>document.querySelector(s),cl=(v,a,b)=>Math.max(a,Math.min(b,v)),QN=['ok','flat (lift-off)','mains noise'];
 const S={mvc:100,mvt:0,target:30,hold:3,rest:3,goal:8,done:0,att:0,phase:'idle',t0:0,a:null,log:[],pfS:5,abS:3,fault:0,auto:0,streak:0,fails:0,hist:[],live:null,dirty:1,msg:['','']};
 function feat(){let f;
  if(S.live&&$('#mode').value==='live')f=Object.assign({},S.live);
+ else if($('#mode').value==='replay'&&window.PelviReplay&&PelviReplay.ready()){const n=()=>Math.random()+Math.random()+Math.random()-1.5,r=PelviReplay.feature(S.phase=='cal');S.fault=0;S.pfS=r.pct;$('#sPf').value=r.pct;f={pf:r.pf,ab:4+.96*S.abS+n()*1.2,mr:r.mr}}
  else{const n=()=>Math.random()+Math.random()+Math.random()-1.5;
   f={pf:4+.96*S.pfS+n()*1.2,ab:4+.96*S.abS+n()*1.2,mr:.02+Math.random()*.03};
   if(S.fault==1)f.pf=.4+Math.random()*.3;
@@ -101,4 +138,6 @@ $('#bCsv').onclick=()=>{const t=$('#ta');t.value='attempt,result,target,hold,avg
 $('#mode').onchange=e=>{$('#bMq').hidden=e.target.value!='live'};
 $('#bMq').onclick=()=>{try{const m=mqtt.connect('wss://broker.hivemq.com:8884/mqtt');m.on('connect',()=>{m.subscribe('medaithon/pfm13/win');$('#bMq').textContent='Connected'});
  m.on('message',(t,p)=>{try{S.live=JSON.parse(p.toString())}catch(e){}});m.on('error',()=>{$('#bMq').textContent='Failed, retry'})}catch(e){$('#bMq').textContent='MQTT blocked here'}};
-</script></body></html>
+</script>
+<script src="js/case-generator.js"></script><script src="js/sample-session.js"></script><script src="js/session-view.js"></script>
+<script>if(typeof SessionView==="undefined"){const e=document.querySelector("#sxEmpty");e.style.color="var(--bad)";e.textContent="The js/ folder was not found next to this HTML file, so file import cannot run. Keep the folder structure, or open pelvicoach_standalone.html, which needs no other files."}</script></body></html>
