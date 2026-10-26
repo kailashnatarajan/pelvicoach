@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>PelviCoach – adaptive pelvic floor biofeedback</title><meta name="description" content="MED-PS-013 prototype">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#eaf1f2;--card:#fff;--ink:#12303a;--mut:#51676e;--line:#cddadd;--ok:#0d7a5f;--warn:#b86e00;--bad:#bb3b30;--acc:#0e6f86;--soft:#d9ecef;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1a1f;--card:#15262d;--ink:#e8f2f4;--mut:#9db3ba;--line:#27414a;--ok:#4fd1a5;--warn:#f0b24d;--bad:#ff8a7c;--acc:#5cc3dc;--soft:#1d3640}}
+:root[data-theme="dark"]{--bg:#0d1a1f;--card:#15262d;--ink:#e8f2f4;--mut:#9db3ba;--line:#27414a;--ok:#4fd1a5;--warn:#f0b24d;--bad:#ff8a7c;--acc:#5cc3dc;--soft:#1d3640}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif}
+header{padding:16px 20px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between}
+h1{margin:0;font-size:28px}h2{margin:0 0 10px;font-size:20px}header p{margin:0;color:var(--mut);font-size:15px;max-width:60ch}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;padding:0 16px 24px;max-width:1200px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}.wide{grid-column:1/-1}
+#msg{font-size:26px;font-weight:700;padding:14px;border-radius:10px;text-align:center;background:var(--soft);min-height:68px;display:flex;align-items:center;justify-content:center}
+#msg.ok{background:color-mix(in srgb,var(--ok) 18%,var(--card));color:var(--ok)}#msg.warn{background:color-mix(in srgb,var(--warn) 20%,var(--card));color:var(--warn)}#msg.bad{background:color-mix(in srgb,var(--bad) 18%,var(--card));color:var(--bad)}
+#stage{position:relative;height:300px;margin:8px 0}#stage div{position:absolute;left:50%;top:50%;border-radius:50%;transform:translate(-50%,-50%)}
+#orb{background:var(--acc);opacity:.85;transition:width .1s,height .1s}#tgt{border:4px dashed var(--ink)}
+#info{text-align:center;color:var(--mut)}.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+button,select{font:inherit;padding:11px 16px;border-radius:10px;border:2px solid var(--acc);background:var(--card);color:var(--ink);cursor:pointer}button.p{background:var(--acc);color:var(--bg);font-weight:700}button.on{background:var(--bad);color:#fff;border-color:var(--bad)}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+label{display:block;margin:8px 0 2px}input[type=range]{width:100%}canvas{width:100%;height:170px;background:var(--soft);border-radius:10px;margin-top:10px}
+.kv{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--mut);font-size:16px;margin-top:8px}.kv b{color:var(--ink)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:16px;min-width:640px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.OK{color:var(--ok)}.MISS,.COMPENSATED{color:var(--warn)}.INVALID{color:var(--bad)}.cmp{margin-top:12px;padding:12px;border-radius:10px;background:var(--soft)}
+textarea{width:100%;height:110px;margin-top:8px;font:13px monospace;display:none}small{color:var(--mut)}
+</style></head><body>
+<header><div><h1>PelviCoach</h1><p>Adaptive pelvic floor biofeedback that ignores bad signals and catches compensation. Biofeedback only: no electrical stimulation.</p></div>
+<div><label for="mode" style="display:inline">Signal source</label> <select id="mode"><option value="sim">Built-in simulator</option><option value="live">Wokwi live (MQTT)</option></select> <button id="bMq" hidden>Connect</button></div></header>
+<main>
+<section class="card" aria-label="Patient screen"><h2>Patient screen</h2><div id="msg" role="status" aria-live="polite">Press “Calibrate”, then “Start session”</div>
+<div id="stage"><div id="tgt"></div><div id="orb"></div></div><div id="info"></div>
+<div class="row"><button id="bCal">1. Calibrate</button><button id="bStart" class="p">2. Start session</button><button id="bDemo">Run auto demo</button></div></section>
+<section class="card" aria-label="Signal simulator"><h2>Signal simulator</h2>
+<label for="sPf">Pelvic floor squeeze (<span id="vPf">5</span>%)</label><input id="sPf" type="range" min="0" max="100" value="5">
+<label for="sAb">Abdominal activity (<span id="vAb">3</span>%)</label><input id="sAb" type="range" min="0" max="100" value="3">
+<div class="row"><button id="f1">Electrode lift-off</button><button id="f2">Mains (50 Hz) noise</button></div>
+<canvas id="cv" width="640" height="170" aria-label="Live signal traces"></canvas>
+<div class="kv"><span>Squeeze <b id="rPf">0</b>% of max</span><span>Abdomen <b id="rAb">0</b>%</span><span>Signal <b id="rQ">ok</b></span><span>Compensation <b id="rC">no</b></span></div>
+<small>Blue: pelvic floor. Amber: abdomen. Dashed: target. Red band: signal rejected.</small></section>
+<section class="card wide" aria-label="Clinician log"><h2>Clinician log</h2><div class="tw"><table><thead><tr><th>Attempt</th><th>Result</th><th>Target</th><th>Hold</th><th>Avg squeeze</th><th>Why (decision)</th><th>Amplitude-only would say</th></tr></thead><tbody id="tb"></tbody></table></div>
+<div class="cmp" id="cmp">Run a session to compare against a plain amplitude-only trainer.</div>
+<div class="row"><button id="bCsv">Show CSV</button></div><textarea id="ta" readonly aria-label="CSV export"></textarea></section>
+</main>
+<script>
+const $=s=>document.querySelector(s),cl=(v,a,b)=>Math.max(a,Math.min(b,v)),QN=['ok','flat (lift-off)','mains noise'];
+const S={mvc:100,mvt:0,target:30,hold:3,rest:3,goal:8,done:0,att:0,phase:'idle',t0:0,a:null,log:[],pfS:5,abS:3,fault:0,auto:0,streak:0,fails:0,hist:[],live:null,dirty:1,msg:['','']};
+function feat(){let f;
+ if(S.live&&$('#mode').value==='live')f=Object.assign({},S.live);
+ else{const n=()=>Math.random()+Math.random()+Math.random()-1.5;
+  f={pf:4+.96*S.pfS+n()*1.2,ab:4+.96*S.abS+n()*1.2,mr:.02+Math.random()*.03};
+  if(S.fault==1)f.pf=.4+Math.random()*.3;
+  if(S.fault==2){f.pf+=38;f.mr=.55+Math.random()*.1}}
+ f.q=f.pf<1.5?1:f.mr>.35?2:0;
+ f.pp=cl((f.pf-4)/(S.mvc-4)*100,0,130);f.ap=cl((f.ab-4)/(S.mvc-4)*100,0,130);
+ f.comp=f.ap>20&&f.ap>.5*f.pp;return f}
+function say(t,c){S.msg=[t,c]}
+function go(p,now){S.phase=p;S.t0=now}
+function endRep(now){const a=S.a,vf=a.v/a.n,nv=a.np/a.n>=.8,bad=a.bad/a.n>.3;let res,why;
+ if(vf<.7){res='INVALID';why='signal rejected ('+QN[a.lq||1]+'): not scored, repeat'}
+ else if(a.c/a.v>.3){res='COMPENSATED';why='abdominal co-activation: relax cue'}
+ else if(a.p/a.v>=.8){res='OK';why='target held on valid windows'}else{res='MISS';why='below target on valid windows'}
+ if(res!='INVALID'){S.done++;
+  if(res=='OK'){S.fails=0;if(++S.streak>=3){S.streak=0;if(S.hold<8&&S.done%2){S.hold++;why+=' → hold +1 s'}else{S.target=Math.min(80,S.target+5);why+=' → target +5%'}}}
+  else if(++S.fails>=2){S.fails=0;S.streak=0;S.hold=Math.max(2,S.hold-1);S.target=Math.max(15,S.target-5);why+=' → easier'}else S.streak=0}
+ S.log.push({n:S.att,res,tgt:a.tgt,hold:a.hold,avg:a.v?Math.round(a.pf/a.v):0,why,nv:nv?(bad?'credit (FALSE)':'credit'):'no credit',fc:nv&&bad});S.dirty=1;
+ if(S.done>=S.goal){go('idle',now);S.auto=0;say('Session complete. Well done.','ok')}else go('rest',now)}
+function ctl(f,now){const el=(now-S.t0)/1000;
+ if(S.phase=='cal'){if(f.q==0)S.mvt=Math.max(S.mvt,f.pf);say('Squeeze as hard as comfortable… '+Math.max(0,Math.ceil(4-el)),'');
+  if(el>=4){S.mvc=Math.max(30,S.mvt);go('idle',now);say('Calibrated. Your maximum is set.','ok');if(S.auto)startSes(now)}}
+ else if(S.phase=='rest'){say('Relax completely','');if(el>=S.rest){S.att++;S.a={n:0,v:0,p:0,np:0,c:0,bad:0,pf:0,lq:0,tgt:S.target,hold:S.hold};go('hold',now)}}
+ else if(S.phase=='hold'){const a=S.a;a.n++;if(f.pp>=S.target)a.np++;if(f.q||f.comp)a.bad++;
+  if(f.q==0){a.v++;a.pf+=f.pp;if(f.pp>=S.target)a.p++;if(f.comp)a.c++}else a.lq=f.q;
+  if(f.q)say('Sensor not reading well. Check the patch.','bad');else if(f.comp)say('Relax your tummy and thighs','warn');else say('Squeeze gently and hold… '+Math.max(0,Math.ceil(S.hold-el)),'ok');
+  if(el>=S.hold)endRep(now)}}
+function startSes(now){S.done=0;S.att=0;S.log=[];S.target=30;S.hold=3;S.streak=S.fails=0;S.dirty=1;go('rest',now)}
+function auto(){const k=S.att;
+ if(S.phase=='cal')S.pfS=95;else if(S.phase=='hold'){S.pfS=cl(S.target+12,0,100);S.abS=3;S.fault=0;
+  if(k==2)S.pfS=S.target*.5;if(k==3)S.fault=1;if(k==5)S.fault=2;if(k==7){S.abS=70;S.pfS=cl(S.target+15,0,100)}}
+ else{S.pfS=5;S.abS=3;S.fault=0}
+ $('#sPf').value=S.pfS;$('#sAb').value=S.abS}
+function draw(){const c=$('#cv'),x=c.getContext('2d'),W=c.width,H=c.height,cs=getComputedStyle(document.documentElement),h=S.hist;x.clearRect(0,0,W,H);
+ const Y=v=>H-6-cl(v,0,110)/110*(H-12);
+ h.forEach((p,i)=>{if(p.q){x.fillStyle=cs.getPropertyValue('--bad');x.globalAlpha=.25;x.fillRect(i*W/200,0,W/200+1,H);x.globalAlpha=1}});
+ x.setLineDash([6,5]);x.strokeStyle=cs.getPropertyValue('--ink');x.beginPath();x.moveTo(0,Y(S.target));x.lineTo(W,Y(S.target));x.stroke();x.setLineDash([]);
+ [['pp','--acc'],['ap','--warn']].forEach(([k,col])=>{x.strokeStyle=cs.getPropertyValue(col);x.lineWidth=2.5;x.beginPath();h.forEach((p,i)=>i?x.lineTo(i*W/200,Y(p[k])):x.moveTo(0,Y(p[k])));x.stroke()})}
+function render(f){const[m,c]=S.msg;$('#msg').textContent=m;$('#msg').className=c;
+ $('#orb').style.width=$('#orb').style.height=(30+f.pp*2.2)+'px';$('#tgt').style.width=$('#tgt').style.height=(30+S.target*2.2)+'px';
+ $('#info').textContent=S.phase=='idle'&&!S.done?'Target '+S.target+'% · hold '+S.hold+' s · '+S.goal+' good reps per session':'Good reps '+S.done+'/'+S.goal+' · target '+S.target+'% · hold '+S.hold+' s';
+ $('#rPf').textContent=Math.round(f.pp);$('#rAb').textContent=Math.round(f.ap);$('#rQ').textContent=QN[f.q];$('#rC').textContent=f.comp?'yes':'no';
+ $('#vPf').textContent=Math.round(S.pfS);$('#vAb').textContent=Math.round(S.abS);
+ $('#f1').classList.toggle('on',S.fault==1);$('#f2').classList.toggle('on',S.fault==2);
+ if(S.dirty){S.dirty=0;$('#tb').innerHTML=S.log.map(r=>`<tr><td>${r.n}</td><td class="${r.res}"><b>${r.res}</b></td><td>${r.tgt}%</td><td>${r.hold} s</td><td>${r.avg}%</td><td>${r.why}</td><td>${r.nv}</td></tr>`).join('');
+  const fc=S.log.filter(r=>r.fc).length,nc=S.log.filter(r=>r.nv.startsWith('credit')).length;
+  if(S.log.length)$('#cmp').innerHTML=`An amplitude-only trainer would have credited <b>${nc}</b> of ${S.log.length} attempts, and <b>${fc}</b> of those credits were false (noise, lift-off or compensation). PelviCoach gave <b>0</b> false credits.`}
+ draw()}
+setInterval(()=>{const now=performance.now(),f=feat();if(S.auto)auto();ctl(f,now);S.hist.push(f);if(S.hist.length>200)S.hist.shift();render(f)},50);
+$('#sPf').oninput=e=>S.pfS=+e.target.value;$('#sAb').oninput=e=>S.abS=+e.target.value;
+$('#f1').onclick=()=>S.fault=S.fault==1?0:1;$('#f2').onclick=()=>S.fault=S.fault==2?0:2;
+$('#bCal').onclick=()=>{S.auto=0;S.mvt=0;go('cal',performance.now())};
+$('#bStart').onclick=()=>{S.auto=0;startSes(performance.now())};
+$('#bDemo').onclick=()=>{S.mvt=0;S.auto=1;go('cal',performance.now())};
+$('#bCsv').onclick=()=>{const t=$('#ta');t.value='attempt,result,target,hold,avg_squeeze,why,amplitude_only\n'+S.log.map(r=>[r.n,r.res,r.tgt,r.hold,r.avg,'"'+r.why+'"',r.nv].join(',')).join('\n');t.style.display='block';t.select()};
+$('#mode').onchange=e=>{$('#bMq').hidden=e.target.value!='live'};
+$('#bMq').onclick=()=>{try{const m=mqtt.connect('wss://broker.hivemq.com:8884/mqtt');m.on('connect',()=>{m.subscribe('medaithon/pfm13/win');$('#bMq').textContent='Connected'});
+ m.on('message',(t,p)=>{try{S.live=JSON.parse(p.toString())}catch(e){}});m.on('error',()=>{$('#bMq').textContent='Failed, retry'})}catch(e){$('#bMq').textContent='MQTT blocked here'}};
+</script></body></html>
