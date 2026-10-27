@@ -96,7 +96,7 @@ export const CaseGeneratorView: React.FC<CaseGeneratorViewProps> = ({
       }
 
       // Fetch from public
-      const resp = await fetch('/pelvisense_session.json');
+      const resp = await fetch('./pelvisense_session.json');
       if (resp.ok) {
         const json = await resp.json();
         const res = parseSession(json, 'bundled example (pelvisense_session.json)');
