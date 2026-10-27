@@ -49,7 +49,8 @@
           : (mode === 'in' ? 'Sign in to see your exercises and progress.' : 'Create an account to start training.');
         $('#nameRow').hidden = mode === 'in';
         $('#pwHint').hidden = mode === 'in';
-        $('#codeRow').hidden = !(mode === 'up' && role === 'clinician');
+        $('#codeRow').hidden = role !== 'clinician';
+        $('#codeRow .hint').textContent = mode === 'in' ? 'Only needed the first time you sign in as a clinician.' : 'Given to you by the project team. It stops patients from creating clinician accounts.';
         $('#pw').autocomplete = mode === 'in' ? 'current-password' : 'new-password';
         $('#go').textContent = mode === 'in' ? 'Sign in' : 'Create ' + R.toLowerCase() + ' account';
         $('#swapText').textContent = mode === 'in' ? 'New here?' : 'Already have an account?';
@@ -80,7 +81,7 @@
           if (mode === 'up') {
             const r = await Backend.signUp(email, pw, name);
             if (r.error) throw r.error;
-            if (!r.data.session) { mode = 'in'; paint(); msg('Account created. Check your email to confirm it, then sign in.', 'okk'); return; }
+            if (!r.data.session) { mode = 'in'; paint(); msg('Account created. Check your email to confirm it, then sign in' + (role === 'clinician' ? ' and enter the same access code.' : '.'), 'okk'); return; }
             if (role === 'clinician') {
               try { await Backend.claimClinician(code); }
               catch (e) { await Backend.signOut(); mode = 'in'; paint(); msg('Wrong clinician access code. Your account was created as a patient account. Sign in on the Patient tab, or ask for the right code.', 'err'); return; }
@@ -89,7 +90,11 @@
             const r = await Backend.signIn(email, pw);
             if (r.error) throw r.error;
           }
-          const me = await Backend.me();
+          let me = await Backend.me();
+          if (me && me.role === 'patient' && role === 'clinician' && code) {
+            try { await Backend.claimClinician(code); me = await Backend.me(); }
+            catch (e) { await Backend.signOut(); msg('Wrong clinician access code.', 'err'); return; }
+          }
           if (!me) throw new Error('Could not load your profile. Try again.');
           if (me.role !== role) {
             await Backend.signOut();
