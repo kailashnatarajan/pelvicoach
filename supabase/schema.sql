@@ -1,111 +1,256 @@
--- PelviCoach schema. Run once in Supabase > SQL Editor. Synthetic/demo data only.
+-- ==============================================================================
+-- PelviCoach Supabase Database Schema
+-- Simple. Guided. Personalized.
+-- ==============================================================================
 
-create table public.profiles (
-  id uuid primary key references auth.users on delete cascade,
-  role text not null default 'patient' check (role in ('patient','clinician')),
-  full_name text,
-  link_code text unique default upper(substr(md5(random()::text),1,6))
+-- 1. Enable UUID Extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. Create PROFILES Table
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('patient', 'clinician')),
+    patient_code TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
 );
-create table public.care_links (
-  clinician_id uuid references public.profiles(id) on delete cascade,
-  patient_id   uuid references public.profiles(id) on delete cascade,
-  primary key (clinician_id, patient_id)
+
+-- 3. Create CARE_LINKS Table (Connects Patients with Clinicians)
+CREATE TABLE IF NOT EXISTS public.care_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    clinician_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    UNIQUE(patient_id, clinician_id)
 );
-create table public.sessions (
-  id uuid primary key default gen_random_uuid(),
-  patient_id uuid not null references public.profiles(id) on delete cascade,
-  source text check (source in ('simulator','wokwi','replay')),
-  device_id text, mvc real,
-  started_at timestamptz default now(), ended_at timestamptz
+
+-- 4. Create EXERCISES Table
+CREATE TABLE IF NOT EXISTS public.exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    instructions TEXT NOT NULL,
+    video_url TEXT,
+    video_filename TEXT,
+    duration TEXT NOT NULL DEFAULT '5 min',
+    difficulty TEXT NOT NULL DEFAULT 'Beginner',
+    default_target INTEGER NOT NULL DEFAULT 65,
+    default_hold INTEGER NOT NULL DEFAULT 5,
+    default_repetitions INTEGER NOT NULL DEFAULT 10,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
 );
-create table public.attempts (
-  id bigint generated always as identity primary key,
-  session_id uuid not null references public.sessions(id) on delete cascade,
-  n int, result text check (result in ('OK','MISS','COMPENSATED','INVALID')),
-  target_pct int, hold_s int, avg_squeeze_pct int, why text,
-  amplitude_only_verdict text, false_credit boolean default false,
-  created_at timestamptz default now()
+
+-- 5. Create PATIENT_EXERCISES Table (Custom Targets assigned to Patient)
+CREATE TABLE IF NOT EXISTS public.patient_exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    exercise_id UUID NOT NULL REFERENCES public.exercises(id) ON DELETE CASCADE,
+    target_percentage INTEGER NOT NULL DEFAULT 65,
+    hold_seconds INTEGER NOT NULL DEFAULT 5,
+    goal_repetitions INTEGER NOT NULL DEFAULT 10,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    UNIQUE(patient_id, exercise_id)
 );
-create table public.settings (
-  patient_id uuid primary key references public.profiles(id) on delete cascade,
-  target_pct int default 30 check (target_pct between 15 and 80),
-  hold_s int default 3 check (hold_s between 2 and 8),
-  goal_reps int default 8 check (goal_reps between 1 and 30),
-  updated_by uuid, updated_at timestamptz default now()
+
+-- 6. Create SESSIONS Table
+CREATE TABLE IF NOT EXISTS public.sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    exercise_id UUID NOT NULL REFERENCES public.exercises(id) ON DELETE CASCADE,
+    start_time TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    end_time TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    total_repetitions INTEGER NOT NULL DEFAULT 0,
+    successful_repetitions INTEGER NOT NULL DEFAULT 0,
+    missed_repetitions INTEGER NOT NULL DEFAULT 0,
+    compensated_repetitions INTEGER NOT NULL DEFAULT 0,
+    invalid_repetitions INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
 );
-create index on public.sessions (patient_id, started_at desc);
-create index on public.attempts (session_id, created_at desc);
 
--- New sign-ups are ALWAYS patients. Promote a clinician by hand (see bottom).
-create function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
-begin insert into public.profiles(id, full_name) values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''));
-return new; end $$;
-create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();
+-- 7. Create ATTEMPTS Table
+CREATE TABLE IF NOT EXISTS public.attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+    rep_number INTEGER NOT NULL DEFAULT 1,
+    result TEXT NOT NULL CHECK (result IN ('OK', 'MISS', 'COMPENSATED', 'INVALID')),
+    target_percentage INTEGER NOT NULL,
+    pelvic_activity INTEGER NOT NULL,
+    abdominal_activity INTEGER NOT NULL,
+    hold_seconds NUMERIC(4, 1) NOT NULL,
+    feedback TEXT,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
+);
 
--- Helpers (security definer so RLS policies can use them without recursion)
-create function public.is_clinician() returns boolean language sql stable security definer set search_path = public as
-$$ select exists(select 1 from profiles where id = auth.uid() and role = 'clinician') $$;
-create function public.is_linked_clinician(pid uuid) returns boolean language sql stable security definer set search_path = public as
-$$ select exists(select 1 from care_links where clinician_id = auth.uid() and patient_id = pid) $$;
+-- 8. INDEXES FOR PERFORMANCE
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_patient_code ON public.profiles(patient_code);
+CREATE INDEX IF NOT EXISTS idx_care_links_clinician ON public.care_links(clinician_id);
+CREATE INDEX IF NOT EXISTS idx_care_links_patient ON public.care_links(patient_id);
+CREATE INDEX IF NOT EXISTS idx_patient_exercises_patient ON public.patient_exercises(patient_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_patient ON public.sessions(patient_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_session ON public.attempts(session_id);
 
--- Clinician links to a patient using the patient's own code (patient shares it = consent step)
-create function public.link_by_code(p_code text) returns uuid language plpgsql security definer set search_path = public as $$
-declare pid uuid;
-begin
-  if not is_clinician() then raise exception 'clinician only'; end if;
-  select id into pid from profiles where link_code = upper(trim(p_code)) and role = 'patient';
-  if pid is null then raise exception 'unknown code'; end if;
-  insert into care_links values (auth.uid(), pid) on conflict do nothing;
-  return pid;
-end $$;
-revoke all on function public.link_by_code(text) from public, anon;
-grant execute on function public.link_by_code(text) to authenticated;
+-- 9. ROW LEVEL SECURITY (RLS) POLICIES
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.care_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exercises ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.patient_exercises ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attempts ENABLE ROW LEVEL SECURITY;
 
--- Row-level security
-alter table public.profiles   enable row level security;
-alter table public.care_links enable row level security;
-alter table public.sessions   enable row level security;
-alter table public.attempts   enable row level security;
-alter table public.settings   enable row level security;
+-- Profiles: users can read their own or linked patients/clinicians
+CREATE POLICY "Users can read own profile"
+    ON public.profiles FOR SELECT
+    USING (auth.uid() = id);
 
-create policy profiles_read on public.profiles for select using (id = auth.uid() or is_linked_clinician(id));
-create policy profiles_upd  on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
-revoke update on public.profiles from authenticated, anon;           -- users may not change their own role...
-grant  update (full_name) on public.profiles to authenticated;       -- ...only their name
+CREATE POLICY "Clinicians can read linked patient profiles"
+    ON public.profiles FOR SELECT
+    USING (id IN (SELECT patient_id FROM public.care_links WHERE clinician_id = auth.uid()));
 
-create policy links_read on public.care_links for select using (clinician_id = auth.uid() or patient_id = auth.uid());
-create policy links_del  on public.care_links for delete using (patient_id = auth.uid());   -- patient can revoke
+CREATE POLICY "Patients can read linked clinician profile"
+    ON public.profiles FOR SELECT
+    USING (id IN (SELECT clinician_id FROM public.care_links WHERE patient_id = auth.uid()));
 
-create policy sess_read on public.sessions for select using (patient_id = auth.uid() or is_linked_clinician(patient_id));
-create policy sess_ins  on public.sessions for insert with check (patient_id = auth.uid());
-create policy sess_upd  on public.sessions for update using (patient_id = auth.uid()) with check (patient_id = auth.uid());
+CREATE POLICY "Users can insert own profile"
+    ON public.profiles FOR INSERT
+    WITH CHECK (auth.uid() = id);
 
-create policy att_read on public.attempts for select using (exists (select 1 from public.sessions s where s.id = session_id));
-create policy att_ins  on public.attempts for insert with check (exists (select 1 from public.sessions s where s.id = session_id and s.patient_id = auth.uid()));
+CREATE POLICY "Users can update own profile"
+    ON public.profiles FOR UPDATE
+    USING (auth.uid() = id);
 
-create policy set_read on public.settings for select using (patient_id = auth.uid() or is_linked_clinician(patient_id));
-create policy set_ins  on public.settings for insert with check (is_linked_clinician(patient_id));
-create policy set_upd  on public.settings for update using (is_linked_clinician(patient_id)) with check (is_linked_clinician(patient_id));
+-- Care Links
+CREATE POLICY "Clinicians view their care links"
+    ON public.care_links FOR SELECT
+    USING (clinician_id = auth.uid() OR patient_id = auth.uid());
 
--- Live tracking (Realtime respects the policies above)
-alter publication supabase_realtime add table public.attempts, public.sessions, public.settings;
+CREATE POLICY "Clinicians insert care links"
+    ON public.care_links FOR INSERT
+    WITH CHECK (clinician_id = auth.uid());
 
--- AFTER signing up your clinician account in the dashboard, run:
--- update public.profiles set role = 'clinician' where id = (select id from auth.users where email = 'you@example.com');
+-- Exercises: Read-only for authenticated users
+CREATE POLICY "Anyone can view exercises"
+    ON public.exercises FOR SELECT
+    TO authenticated
+    USING (true);
 
--- ===== Stage 1 addition: safe clinician sign-up with a secret access code =====
--- Nobody can read this table from the website (RLS on, no policies). Only claim_clinician() checks it.
-create table public.app_secrets (key text primary key, value text not null);
-alter table public.app_secrets enable row level security;
-insert into public.app_secrets values ('clinician_code', 'CHANGE-ME-2026');   -- <- change this code before your demo
+-- Patient Exercises: Patients view own; Clinicians view & edit for linked patients
+CREATE POLICY "Patients can view own training plans"
+    ON public.patient_exercises FOR SELECT
+    USING (patient_id = auth.uid() OR patient_id IN (SELECT patient_id FROM public.care_links WHERE clinician_id = auth.uid()));
 
-create function public.claim_clinician(p_code text) returns void language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null then raise exception 'Sign in first'; end if;
-  if not exists (select 1 from app_secrets where key = 'clinician_code' and value = trim(p_code)) then
-    raise exception 'Wrong clinician access code';
-  end if;
-  update profiles set role = 'clinician' where id = auth.uid();
-end $$;
-revoke all on function public.claim_clinician(text) from public, anon;
-grant execute on function public.claim_clinician(text) to authenticated;
+CREATE POLICY "Patients and Clinicians can insert/update training plans"
+    ON public.patient_exercises FOR ALL
+    USING (patient_id = auth.uid() OR patient_id IN (SELECT patient_id FROM public.care_links WHERE clinician_id = auth.uid()));
+
+-- Sessions
+CREATE POLICY "Patients view own sessions or Clinicians view linked"
+    ON public.sessions FOR SELECT
+    USING (patient_id = auth.uid() OR patient_id IN (SELECT patient_id FROM public.care_links WHERE clinician_id = auth.uid()));
+
+CREATE POLICY "Patients insert own sessions"
+    ON public.sessions FOR INSERT
+    WITH CHECK (patient_id = auth.uid());
+
+-- Attempts
+CREATE POLICY "View attempts for accessible sessions"
+    ON public.attempts FOR SELECT
+    USING (session_id IN (
+        SELECT id FROM public.sessions
+        WHERE patient_id = auth.uid() OR patient_id IN (SELECT patient_id FROM public.care_links WHERE clinician_id = auth.uid())
+    ));
+
+CREATE POLICY "Patients insert attempts for own sessions"
+    ON public.attempts FOR INSERT
+    WITH CHECK (session_id IN (
+        SELECT id FROM public.sessions WHERE patient_id = auth.uid()
+    ));
+
+-- 10. HELPER FUNCTION: Link Patient by Code
+CREATE OR REPLACE FUNCTION public.link_patient_by_code(p_code TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    target_patient_id UUID;
+    calling_clinician_id UUID;
+    existing_link UUID;
+    patient_name TEXT;
+BEGIN
+    calling_clinician_id := auth.uid();
+    IF calling_clinician_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    -- Lookup patient by code
+    SELECT id, name INTO target_patient_id, patient_name
+    FROM public.profiles
+    WHERE UPPER(TRIM(patient_code)) = UPPER(TRIM(p_code)) AND role = 'patient';
+
+    IF target_patient_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', 'Patient code not found.');
+    END IF;
+
+    -- Check if link already exists
+    SELECT id INTO existing_link
+    FROM public.care_links
+    WHERE patient_id = target_patient_id AND clinician_id = calling_clinician_id;
+
+    IF existing_link IS NOT NULL THEN
+        RETURN jsonb_build_object('success', true, 'message', 'Patient already linked.', 'patient_name', patient_name);
+    END IF;
+
+    -- Insert care link
+    INSERT INTO public.care_links (patient_id, clinician_id)
+    VALUES (target_patient_id, calling_clinician_id);
+
+    RETURN jsonb_build_object('success', true, 'message', 'Patient successfully linked!', 'patient_name', patient_name);
+END;
+$$;
+
+-- 11. TRIGGER: Auto-create profile on Auth Signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    user_role TEXT;
+    generated_code TEXT;
+BEGIN
+    user_role := COALESCE(new.raw_user_meta_data->>'role', 'patient');
+    
+    IF user_role = 'patient' THEN
+        -- Generate readable code like PELVI-4821
+        generated_code := 'PELVI-' || floor(1000 + random() * 9000)::TEXT;
+    ELSE
+        generated_code := NULL;
+    END IF;
+
+    INSERT INTO public.profiles (id, name, email, role, patient_code)
+    VALUES (
+        new.id,
+        COALESCE(new.raw_user_meta_data->>'name', 'PelviCoach User'),
+        new.email,
+        user_role,
+        generated_code
+    );
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 12. SEED INITIAL EXERCISES
+INSERT INTO public.exercises (id, name, description, instructions, video_filename, duration, difficulty, default_target, default_hold, default_repetitions)
+VALUES
+    ('a0000000-0000-0000-0000-000000000001', 'Pelvic Floor Hold', 'Gently tighten your pelvic-floor muscles and hold steady.', 'Sit comfortably with feet flat. Gently squeeze as if stopping the flow of urine. Keep your stomach and buttocks relaxed. Hold steadily then gently release.', 'pelvic-floor-hold.mp4', '5 minutes', 'Beginner', 65, 5, 10),
+    ('a0000000-0000-0000-0000-000000000002', 'Quick Contractions', 'Rapid, rhythmic tightening to strengthen quick-response muscle fibers.', 'Squeeze your pelvic floor quickly for 1 second, then release immediately for 1 second. Repeat rhythmically without holding your breath.', 'pelvic-floor-basic.mp4', '3 minutes', 'Intermediate', 70, 2, 10),
+    ('a0000000-0000-0000-0000-000000000003', 'Deep Pelvic Relax', 'Gentle release and breath synchronization for muscle rest.', 'Take a slow deep breath into your belly. As you exhale, feel your pelvic floor completely soften and drop downward without straining.', 'pelvic-floor-relax.mp4', '4 minutes', 'Gentle', 50, 6, 8)
+ON CONFLICT (id) DO NOTHING;
