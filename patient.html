@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e6f86">
+<title>PelviCoach – my exercises</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#f3f8f8;--card:#fff;--ink:#0c2b33;--mute:#486068;--pri:#0e6f86;--onpri:#fff;--soft:#e3f0f2;--ok:#1F7A6D;--line:#d3e0e3;--warn:#B4400C;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0b171b;--card:#13232a;--ink:#e8f2f4;--mute:#9db3ba;--pri:#5cc3dc;--onpri:#08181d;--soft:#1b333c;--ok:#6FD3C5;--line:#26404a;--warn:#FB923C;color-scheme:dark}}
+*{box-sizing:border-box}html{font-size:20px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;line-height:1.45;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#app{max-width:560px;margin:0 auto;padding:16px 16px 32px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+header b{font-size:1.15rem}header span{font-size:.75rem;color:var(--mute)}
+h1{font-size:1.6rem;margin:.2em 0 .3em;line-height:1.2}h2{font-size:1.15rem;margin:0 0 .4em}p{margin:.3em 0}
+.card{background:var(--card);border-radius:22px;padding:18px;margin:12px 0;border:2px solid var(--line)}
+.mute{color:var(--mute);font-size:.85rem}.err{color:var(--warn);font-weight:700;min-height:1.2em}
+button{font:inherit;cursor:pointer}
+.btn{display:block;width:100%;min-height:58px;border:0;border-radius:18px;background:var(--pri);color:var(--onpri);font-weight:800;font-size:1.1rem;padding:12px 18px;margin:10px 0}
+.btn.ghost{background:var(--soft);color:var(--ink)}.btn:disabled{opacity:.5}
+.lnk{background:none;border:0;color:var(--pri);font-weight:700;text-decoration:underline;padding:10px;min-height:44px}
+:focus-visible{outline:3px solid var(--pri);outline-offset:3px}
+label{display:block;font-weight:700;margin:10px 0;font-size:.9rem}
+input,select,textarea{width:100%;font:inherit;min-height:48px;border-radius:12px;border:2px solid var(--line);padding:6px 10px;background:var(--card);color:var(--ink);margin-top:4px}
+label.chk{display:flex;gap:12px;align-items:flex-start;font-weight:600}label.chk input{width:28px;height:28px;margin:0;flex:none}
+.tabs{display:flex;gap:8px}.tabs button{flex:1;min-height:48px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-weight:700}
+.tabs .on{background:var(--pri);color:var(--onpri);border-color:var(--pri)}
+.week{display:flex;justify-content:space-between;margin:10px 0}.day{text-align:center;font-size:.8rem;color:var(--mute);width:13%}
+.day i{display:block;width:34px;height:34px;margin:4px auto 0;border-radius:50%;border:2px dashed var(--line)}
+.day i.on{background:var(--ok);border:2px solid var(--ok)}.day i.today{border:3px solid var(--pri)}
+.hero{display:flex;gap:14px;align-items:center}.hero svg{width:92px;flex:none}
+.pt{fill:var(--pc,#B79CE0);opacity:.8}
+.list{list-style:none;padding:0;margin:8px 0}.list li{padding:8px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:.9rem}
+.nudge{background:var(--soft);border-radius:16px;padding:12px 14px;font-weight:700;font-size:.9rem;margin:10px 0}
+.run{text-align:center}.top{display:flex;justify-content:space-between;font-weight:800}
+.stage{position:relative;width:min(78vw,320px);aspect-ratio:1;margin:12px auto}
+.stage svg{position:absolute;inset:0;width:100%;height:100%}.stage .fw{position:absolute;inset:14%}
+#arc{stroke:var(--pc,#B79CE0)}#pet{transition-property:transform;transition-timing-function:ease-in-out}
+.ph{font-size:1.5rem;font-weight:800}.sec{font-size:4.2rem;font-weight:800;line-height:1}.tip{color:var(--mute);min-height:2.6em}
+.dots{display:flex;gap:8px;justify-content:center;margin:8px 0}.dots i{width:14px;height:14px;border-radius:50%;background:var(--line)}
+.dots i.on{background:var(--ok)}.dots i.cur{background:var(--pri);transform:scale(1.3)}
+.row{display:flex;gap:10px}.row .btn{margin:6px 0}
+.feel{display:flex;gap:10px}.feel button{flex:1;min-height:76px;border-radius:18px;border:3px solid var(--line);background:var(--card);color:var(--ink);font-weight:800}
+.feel .sel{border-color:var(--pri);background:var(--soft)}
+.chip{display:inline-block;border-radius:99px;padding:3px 12px;font-size:.8rem;font-weight:800;background:var(--soft)}.chip.ok{color:var(--ok)}.chip.bad{color:var(--warn)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--soft);border-radius:16px;padding:12px}.stat b{font-size:1.4rem;display:block}
+.bars{display:flex;align-items:flex-end;gap:4px;height:90px;margin:8px 0}.bars i{flex:1;max-width:48px;background:var(--pri);border-radius:6px 6px 0 0;min-height:3px}.bars i.z{background:var(--line)}
+.pcard{width:100%;text-align:left;color:var(--ink)}
+.pr{display:flex;gap:8px;align-items:end}.pr label{flex:1;font-size:.75rem;color:var(--mute);margin:6px 0}
+.orbw{position:relative;width:260px;height:260px;margin:10px auto;display:grid;place-items:center}
+.orbw div{position:absolute;border-radius:50%}#tgt{border:3px dashed var(--ink)}#orb{background:var(--pri);opacity:.85;transition:width .08s,height .08s}
+video{width:100%;border-radius:16px;background:#000;max-height:60vh}
+.verdict{border-radius:16px;padding:12px 14px;font-weight:800;margin:10px 0}.verdict.ok{background:#dff3ec;color:#0b7a5c}.verdict.warn{background:#fbebd2;color:#8a4f00}
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:12px}.m span{font-size:.8rem;color:var(--mute)}.m b{display:block;font-size:1.6rem}.bar{height:12px;border-radius:9px;background:var(--line)}.bar i{display:block;height:100%;width:0;border-radius:9px;background:var(--pri);transition:width .1s}
+.btn.sel{outline:3px solid var(--pri)}.sum{display:grid;grid-template-columns:1fr 1fr;gap:10px}.disc{font-size:.75rem;color:var(--mute);text-align:center;margin-top:18px}
+@media (prefers-reduced-motion:reduce){#pet{transition:none!important}}
+</style></head>
+<body><div id="app"><p>Loading…</p></div>
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/backend.js"></script><script src="js/auth.js"></script><script src="js/report.js"></script>
+<script type="module" src="js/app.js"></script>
+</body></html>

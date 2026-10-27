@@ -1,59 +1,116 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#6F4FC4">
-<title>PelviCoach</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
-<style>
-:root{--bg:#F3F0FA;--card:#fff;--ink:#2B2540;--mute:#5F5979;--pri:#6F4FC4;--onpri:#fff;--soft:#E9E1FA;--ok:#1F7A6D;--line:#DCD4F0;--warn:#B4400C;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#17132A;--card:#241E3D;--ink:#F1EDFB;--mute:#B7AED6;--pri:#B79CE0;--onpri:#17132A;--soft:#352B5C;--ok:#6FD3C5;--line:#3A3160;--warn:#FB923C;color-scheme:dark}}
-*{box-sizing:border-box}html{font-size:20px}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Nunito,"Segoe UI",system-ui,sans-serif;line-height:1.45;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-#app{max-width:560px;margin:0 auto;padding:16px 16px 32px}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-header b{font-size:1.15rem}header span{font-size:.75rem;color:var(--mute)}
-h1{font-size:1.6rem;margin:.2em 0 .3em;line-height:1.2}h2{font-size:1.15rem;margin:0 0 .4em}p{margin:.3em 0}
-.card{background:var(--card);border-radius:22px;padding:18px;margin:12px 0;border:2px solid var(--line)}
-.mute{color:var(--mute);font-size:.85rem}.err{color:var(--warn);font-weight:700;min-height:1.2em}
-button{font:inherit;cursor:pointer}
-.btn{display:block;width:100%;min-height:58px;border:0;border-radius:18px;background:var(--pri);color:var(--onpri);font-weight:800;font-size:1.1rem;padding:12px 18px;margin:10px 0}
-.btn.ghost{background:var(--soft);color:var(--ink)}.btn:disabled{opacity:.5}
-.lnk{background:none;border:0;color:var(--pri);font-weight:700;text-decoration:underline;padding:10px;min-height:44px}
-:focus-visible{outline:3px solid var(--pri);outline-offset:3px}
-label{display:block;font-weight:700;margin:10px 0;font-size:.9rem}
-input,select,textarea{width:100%;font:inherit;min-height:48px;border-radius:12px;border:2px solid var(--line);padding:6px 10px;background:var(--card);color:var(--ink);margin-top:4px}
-label.chk{display:flex;gap:12px;align-items:flex-start;font-weight:600}label.chk input{width:28px;height:28px;margin:0;flex:none}
-.tabs{display:flex;gap:8px}.tabs button{flex:1;min-height:48px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-weight:700}
-.tabs .on{background:var(--pri);color:var(--onpri);border-color:var(--pri)}
-.week{display:flex;justify-content:space-between;margin:10px 0}.day{text-align:center;font-size:.8rem;color:var(--mute);width:13%}
-.day i{display:block;width:34px;height:34px;margin:4px auto 0;border-radius:50%;border:2px dashed var(--line)}
-.day i.on{background:var(--ok);border:2px solid var(--ok)}.day i.today{border:3px solid var(--pri)}
-.hero{display:flex;gap:14px;align-items:center}.hero svg{width:92px;flex:none}
-.pt{fill:var(--pc,#B79CE0);opacity:.8}
-.list{list-style:none;padding:0;margin:8px 0}.list li{padding:8px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:.9rem}
-.nudge{background:var(--soft);border-radius:16px;padding:12px 14px;font-weight:700;font-size:.9rem;margin:10px 0}
-.run{text-align:center}.top{display:flex;justify-content:space-between;font-weight:800}
-.stage{position:relative;width:min(78vw,320px);aspect-ratio:1;margin:12px auto}
-.stage svg{position:absolute;inset:0;width:100%;height:100%}.stage .fw{position:absolute;inset:14%}
-#arc{stroke:var(--pc,#B79CE0)}#pet{transition-property:transform;transition-timing-function:ease-in-out}
-.ph{font-size:1.5rem;font-weight:800}.sec{font-size:4.2rem;font-weight:800;line-height:1}.tip{color:var(--mute);min-height:2.6em}
-.dots{display:flex;gap:8px;justify-content:center;margin:8px 0}.dots i{width:14px;height:14px;border-radius:50%;background:var(--line)}
-.dots i.on{background:var(--ok)}.dots i.cur{background:var(--pri);transform:scale(1.3)}
-.row{display:flex;gap:10px}.row .btn{margin:6px 0}
-.feel{display:flex;gap:10px}.feel button{flex:1;min-height:76px;border-radius:18px;border:3px solid var(--line);background:var(--card);color:var(--ink);font-weight:800}
-.feel .sel{border-color:var(--pri);background:var(--soft)}
-.chip{display:inline-block;border-radius:99px;padding:3px 12px;font-size:.8rem;font-weight:800;background:var(--soft)}.chip.ok{color:var(--ok)}.chip.bad{color:var(--warn)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--soft);border-radius:16px;padding:12px}.stat b{font-size:1.4rem;display:block}
-.bars{display:flex;align-items:flex-end;gap:4px;height:90px;margin:8px 0}.bars i{flex:1;background:var(--pri);border-radius:6px 6px 0 0;min-height:3px}.bars i.z{background:var(--line)}
-.pcard{width:100%;text-align:left;color:var(--ink)}
-.pr{display:flex;gap:8px;align-items:end}.pr label{flex:1;font-size:.75rem;color:var(--mute);margin:6px 0}
-.orbw{position:relative;width:260px;height:260px;margin:10px auto;display:grid;place-items:center}
-.orbw div{position:absolute;border-radius:50%}#tgt{border:3px dashed var(--ink)}#orb{background:var(--pri);opacity:.85;transition:width .08s,height .08s}
-video{width:100%;border-radius:16px;background:#000;max-height:60vh}
-.disc{font-size:.75rem;color:var(--mute);text-align:center;margin-top:18px}
-@media (prefers-reduced-motion:reduce){#pet{transition:none!important}}
-</style></head>
-<body><div id="app"><p>Loading…</p></div>
-<script type="module" src="app.js"></script>
-</body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PelviCoach: pelvic floor training that checks every repetition</title>
+<meta name="description" content="Adaptive pelvic floor rehabilitation and biofeedback prototype. Prototype for demonstration, not a medical device.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='none' stroke='%230e6f86' stroke-width='2.5' stroke-dasharray='4 3'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%230e6f86'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="index.html" aria-label="PelviCoach home">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="var(--pt)" stroke-width="2.5" stroke-dasharray="4 3"/><circle cx="16" cy="16" r="7" fill="var(--pt)"/></svg>PelviCoach</a>
+  <nav aria-label="Main">
+    <a class="hide-sm" href="#how">How it works</a>
+    <a class="hide-sm" href="#people">Patients and clinicians</a>
+    <a class="hide-sm" href="#demo">Demo</a>
+    <a class="btn pt sm" href="login.html?role=patient">Patient login</a>
+    <a class="btn cl sm" href="login.html?role=clinician">Clinician login</a>
+  </nav>
+</div></header>
+
+<main>
+<section class="hero"><div class="wrap">
+  <div>
+    <h1>Count only the squeezes that count.</h1>
+    <p class="lead">PelviCoach is a pelvic floor trainer for older women with urinary incontinence. It checks the sensor signal, watches for belly-muscle cheating, and credits a repetition only when it was done correctly. Clinicians review the results and set the targets.</p>
+    <div class="cta">
+      <a class="btn pt" href="login.html?role=patient">Patient login</a>
+      <a class="btn cl" href="login.html?role=clinician">Clinician login</a>
+    </div>
+    <small>Prototype for demonstration. Not a medical device.</small>
+  </div>
+
+  <figure class="fig" style="margin:0">
+    <svg viewBox="0 0 620 300" role="img" aria-labelledby="figT figD">
+      <title id="figT">Three repetitions judged two ways</title>
+      <desc id="figD">Rep 1: pelvic floor rises, abdomen stays flat. An amplitude-only trainer counts it; PelviCoach says OK. Rep 2: pelvic floor and abdomen both rise. Amplitude-only counts it; PelviCoach says compensated. Rep 3: a jagged noisy pelvic trace from mains interference. Amplitude-only counts it; PelviCoach says invalid.</desc>
+      <text class="t" x="0" y="94">Pelvic floor</text><text class="t" x="0" y="194">Abdomen</text>
+      <text class="t" x="0" y="244">Basic trainer</text><text class="t" x="0" y="284">PelviCoach</text>
+      <line class="rule" x1="104" y1="90" x2="598" y2="90"/><line class="rule" x1="104" y1="190" x2="598" y2="190"/>
+
+      <text class="t" x="179" y="22" text-anchor="middle">Rep 1</text><text class="t" x="351" y="22" text-anchor="middle">Rep 2</text><text class="t" x="523" y="22" text-anchor="middle">Rep 3</text>
+
+      <g transform="translate(104,0) scale(.94 1)">
+        <polyline class="pf" pathLength="1" points="0,90 30,90 45,38 115,38 130,90 160,90"/>
+        <polyline class="ab" pathLength="1" points="0,190 40,188 80,191 120,188 160,190"/></g>
+      <g transform="translate(276,0) scale(.94 1)">
+        <polyline class="pf" pathLength="1" points="0,90 30,90 45,38 115,38 130,90 160,90"/>
+        <polyline class="ab" pathLength="1" points="0,190 30,190 45,138 115,138 130,190 160,190"/></g>
+      <g transform="translate(448,0) scale(.94 1)">
+        <polyline class="pf" pathLength="1" points="0,90 30,90 36,45 42,85 48,45 54,85 60,45 66,85 72,45 78,85 84,45 90,85 96,45 102,85 108,45 114,85 120,45 126,85 132,45 138,90 160,90"/>
+        <polyline class="ab" pathLength="1" points="0,190 40,188 80,191 120,188 160,190"/></g>
+
+      <g class="chip c-n late"><rect x="109" y="226" width="140" height="28"/><text x="179" y="245">counted</text></g>
+      <g class="chip c-n late"><rect x="281" y="226" width="140" height="28"/><text x="351" y="245">counted</text></g>
+      <g class="chip c-n late"><rect x="453" y="226" width="140" height="28"/><text x="523" y="245">counted</text></g>
+      <g class="chip c-ok late"><rect x="109" y="266" width="140" height="28"/><text x="179" y="285">OK</text></g>
+      <g class="chip c-w late"><rect x="281" y="266" width="140" height="28"/><text x="351" y="285">COMPENSATED</text></g>
+      <g class="chip c-b late"><rect x="453" y="266" width="140" height="28"/><text x="523" y="285">INVALID: noise</text></g>
+    </svg>
+    <figcaption>All three reps look strong on the pelvic floor trace. Only the first one was a correct squeeze.</figcaption>
+  </figure>
+</div></section>
+
+<section class="s" id="how"><div class="wrap">
+  <h2>How every repetition is judged</h2>
+  <p class="intro">The checks run in this order, and the first one that fails decides the result. The reason is always shown to the patient.</p>
+  <ol class="steps">
+    <li><span class="n">1</span><div><b>Measure</b><span>Two sensors read pelvic floor activity and abdominal activity, as a share of the patient's own maximum.</span></div></li>
+    <li><span class="n">2</span><div><b>Check the signal</b><span>A flat line (loose electrode) or 50 Hz mains interference makes the rep <span class="verd b">INVALID</span>. It is not scored and never changes the plan.</span></div></li>
+    <li><span class="n">3</span><div><b>Look for compensation</b><span>If the abdomen is doing the work, the rep is <span class="verd w">COMPENSATED</span> and the patient gets a cue to relax.</span></div></li>
+    <li><span class="n">4</span><div><b>Compare with the target</b><span>Below the target for the whole hold is a <span class="verd w">MISS</span>. Otherwise the rep is <span class="verd ok">OK</span> and counts toward the goal.</span></div></li>
+    <li><span class="n">5</span><div><b>Adapt the training</b><span>Three OK reps in a row make the next target harder. Two misses in a row make it easier. The rule is simple and visible to everyone.</span></div></li>
+    <li><span class="n">6</span><div><b>Store and review</b><span>Each result is saved with its reason, so the clinician can see what happened and change targets, hold time and reps.</span></div></li>
+  </ol>
+</div></section>
+
+<section class="s" id="people"><div class="wrap">
+  <h2>One platform, two views</h2>
+  <p class="intro">Patients and clinicians sign in separately and see different things.</p>
+  <div class="two">
+    <div><h3>For patients</h3><ul>
+      <li>Guided exercises with a short video for each one</li>
+      <li>Live feedback: pelvic activity, abdominal activity, signal quality, target and hold timer</li>
+      <li>A clear result and reason after every repetition</li>
+      <li>Past sessions and progress in one place</li></ul></div>
+    <div><h3>For clinicians</h3><ul>
+      <li>See only the patients who have shared their link code</li>
+      <li>Results by type: OK, missed, compensated, invalid</li>
+      <li>Trends over time for success rate, activity and targets</li>
+      <li>Adjust target intensity, hold time and repetitions</li></ul></div>
+  </div>
+</div></section>
+
+<section class="s" id="demo"><div class="wrap">
+  <h2>Try it without any hardware</h2>
+  <p class="intro">Demo mode replays five situations on demand, so you can see each verdict in under a minute.</p>
+  <ul class="scen">
+    <li>Correct squeeze</li><li>Abdominal compensation</li><li>Weak contraction</li><li>Loose electrode</li><li>50 Hz interference</li>
+  </ul>
+  <a class="btn pt" href="login.html?role=patient">Open the patient login</a>
+</div></section>
+
+<section class="s" id="privacy"><div class="wrap">
+  <h2>Privacy and security</h2>
+  <p class="intro">Sign-in is required. A patient can only open their own records. A clinician can only open patients who gave them a link code, and the patient can remove that link at any time. Only repetition results are stored, not raw sensor signals.</p>
+</div></section>
+</main>
+
+<footer><div class="wrap"><p>PelviCoach is a prototype rehabilitation and biofeedback platform developed for demonstration and research purposes. It is not a clinically validated diagnostic or treatment device. Clinical use requires appropriate validation and qualified healthcare supervision.</p></div></footer>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Doctor report – PelviCoach</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+.kpi,.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}.kpi b{display:block;font-size:1.8rem}.kpi span{color:var(--mut);font-size:.92rem}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}@media(max-width:760px){.cols{grid-template-columns:1fr}}
+.bars{display:flex;align-items:flex-end;gap:5px;height:120px;border-bottom:2px solid var(--line);margin:10px 0}.bars i{flex:1;max-width:48px;background:var(--cl);border-radius:5px 5px 0 0}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.frm label{margin:0;font-weight:700}.frm input{margin-top:6px;font:inherit;padding:10px;border-radius:10px;border:2px solid var(--line);background:var(--card);color:var(--ink);width:100%}
+.sel2{font:inherit;padding:10px;border-radius:10px;border:2px solid var(--line);background:var(--card);color:var(--ink)}
+</style></head>
+<body data-role="clinician">
+<header class="top"><div class="wrap">
+  <a class="logo" href="index.html"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-dasharray="4 3"/><circle cx="16" cy="16" r="7" fill="var(--acc)"/></svg>PelviCoach</a>
+  <nav><span id="who" class="mut"></span><a id="out" href="index.html">Home</a></nav>
+</div></header>
+<main class="wrap" style="padding:28px 20px 60px">
+  <h1 style="font-size:2rem">Doctor report</h1>
+  <div class="note">Demo data: this page shows sessions saved on this device. Once the database is connected, it lists each patient linked to you.</div>
+  <p style="margin-top:16px"><label for="pt" style="font-weight:700">Patient </label><select id="pt" class="sel2"><option>Demo patient (this device)</option></select></p>
+  <div id="rep"></div>
+  <p class="mut" style="margin-top:36px;font-size:.9rem">PelviCoach is a prototype rehabilitation and biofeedback platform developed for demonstration and research purposes. It is not a clinically validated diagnostic or treatment device. Clinical use requires appropriate validation and qualified healthcare supervision.</p>
+</main>
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/backend.js"></script><script src="js/auth.js"></script><script src="js/report.js"></script>
+<script>
+(async () => {
+  const me = await Auth.guard('clinician');
+  if (me) { document.getElementById('who').textContent = me.full_name || ''; const o = document.getElementById('out'); o.textContent = 'Sign out'; o.href = '#'; o.onclick = e => { e.preventDefault(); Auth.signOut(); }; }
+  const R = Rpt, esc = R.esc;
+  function draw(msg) {
+    const a = R.sessions(), st = R.stats(a), p = R.plan(), c = st.c;
+    const k = (b, s) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`;
+    document.getElementById('rep').innerHTML = `
+<div class="kg">${k(p.target + '%', 'Current target')}${k(p.hold + ' s', 'Hold time')}${k(p.goal, 'Goal repetitions')}${k(st.rate == null ? '–' : st.rate + '%', 'Success rate (valid reps)')}${k(st.n, 'Sessions saved')}${k(st.days7 + ' of 7', 'Days practised this week')}</div>
+<div class="box"><b>Repetition results</b><p style="margin-top:8px"><span class="verd ok">OK ${c.OK}</span> <span class="verd w">MISS ${c.MISS}</span> <span class="verd w">COMPENSATED ${c.COMPENSATED}</span> <span class="verd b">INVALID ${c.INVALID}</span></p>
+<p class="mut" style="margin-top:8px">${st.fc} repetition${st.fc === 1 ? '' : 's'} had high pelvic activity but were rejected (compensation or poor signal). An amplitude-only trainer would have credited them.</p></div>
+<div class="cols"><div class="box"><b>Success rate per session</b>${R.bars(st.per, 'rate')}<span class="mut">Latest 12 sessions, oldest on the left.</span></div>
+<div class="box"><b>Target at end of session</b>${R.bars(st.per, 'target')}<span class="mut">Adaptive rule: 3 OK in a row raises it, 2 failed in a row lowers it. Invalid reps never change it.</span></div></div>
+<div class="box"><b>Training settings</b><p class="mut" style="margin:6px 0 12px">Applies to the patient's next sensor session.</p>
+<div class="frm"><label>Target intensity (%)<input id="s1" type="number" min="10" max="90" value="${p.target}"></label><label>Hold time (seconds)<input id="s2" type="number" min="1" max="12" value="${p.hold}"></label><label>Goal repetitions<input id="s3" type="number" min="1" max="30" value="${p.goal}"></label></div>
+<button class="btn" style="width:auto;margin-top:14px;background:var(--cl);color:var(--on-acc)" id="sv">Save settings</button>${msg ? `<div class="note okk">${msg}</div>` : ''}</div>
+<div class="box" style="margin-top:14px"><b>Recent sessions</b><div class="tw"><table><thead><tr><th>Date</th><th>Type</th><th>Result</th><th>Feeling</th><th>Discomfort</th><th>Note</th></tr></thead><tbody>${a.length ? a.slice(0, 15).map(s => `<tr><td>${R.when(s.ts)}</td><td>${s.mode === 'bedridden' ? 'Sensor' : 'Timer'}</td><td>${esc(R.line(s))}</td><td>${R.FEEL[s.feel] || ''}</td><td>${s.pain ? 'Yes' : ''}</td><td>${esc(s.note || '')}</td></tr>`).join('') : '<tr><td colspan="6" class="mut">No sessions yet. Do a session on the patient page first.</td></tr>'}</tbody></table></div></div>`;
+    document.getElementById('sv').onclick = () => { R.setPlan({ target: s1.value, hold: s2.value, goal: s3.value }); draw('Saved. The patient will see these settings next session.'); };
+  }
+  draw();
+})();
+</script></body></html>
