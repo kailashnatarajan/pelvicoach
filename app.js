@@ -1,6 +1,4 @@
-import{createClient}from"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-import{SUPABASE_URL,SUPABASE_KEY,MQTT}from"./config.js";
-const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
+import{MQTT,VIDEOS}from"./config.js";
 const $=s=>document.querySelector(s),app=$("#app"),x=window.x={};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const cl=(v,a,b)=>Math.max(a,Math.min(b,v)),clone=o=>JSON.parse(JSON.stringify(o));
@@ -23,62 +21,21 @@ const S={u:null,me:null,loaded:false,tab:"patient",su:false,err:"",view:"home",s
 let E=null,timer=null,BR=null,btimer=null,unsubs=[];
 const flower=()=>`<svg viewBox="0 0 200 200" aria-hidden="true"><g id="pet" style="transform-origin:100px 100px">${[0,1,2,3,4,5,6,7].map(i=>`<ellipse class="pt" cx="100" cy="56" rx="20" ry="40" transform="rotate(${i*45} 100 100)"/>`).join("")}</g><circle cx="100" cy="100" r="22" fill="#F6C453"/></svg>`;
 
-/* ---------- auth and data (Supabase) ---------- */
-const nice=e=>{const m=String(e&&e.message||"");return/Database error/i.test(m)?"Sign-up was rejected. Doctors: check the clinic code.":/Invalid login/i.test(m)?"Email or password is incorrect.":/already registered/i.test(m)?"That email already has an account.":/at least 6/i.test(m)?"Password needs at least 6 characters.":/rate limit/i.test(m)?"Too many tries. Please wait a moment.":m||"Something went wrong."};
-x.setTab=t=>{S.tab=t;S.err="";render()};
-x.toggleSu=()=>{S.su=!S.su;S.err="";render()};
-x.out=()=>sb.auth.signOut();
-x.reset=async()=>{const em=$("#em").value.trim();if(!em){S.err="Type your email first.";return render()}const{error}=await sb.auth.resetPasswordForEmail(em);S.err=error?nice(error):"Reset link sent. Check your email.";render()};
-x.submit=async()=>{
-  const em=$("#em").value.trim(),pw=$("#pw").value,d=S.tab==="doctor";S.err="";
-  try{
-    if(!S.su){const{error}=await sb.auth.signInWithPassword({email:em,password:pw});if(error)throw error;return}
-    const nm=$("#nm").value.trim();if(!nm||!$("#cn").checked)throw{message:"Please enter your name and tick the consent box."};
-    const ic=d?"":$("#ic").value.trim();
-    if(ic){const c=await sb.rpc("pc_check_invite",{code:ic});if(c.error)throw c.error;if(!c.data)throw{message:"That invite code wasn’t found. Check it, or leave it blank to sign up without a doctor."}}
-    const meta=d?{role:"doctor",name:nm,clinic_code:$("#cc").value.trim()}:{role:"patient",name:nm,invite_code:ic};
-    const{data,error}=await sb.auth.signUp({email:em,password:pw,options:{data:meta}});if(error)throw error;
-    if(!data.session){S.err="Account created. Check your email to confirm it, then sign in.";S.su=false}
-  }catch(e){S.err=nice(e)}
-  render();
-};
-let poll=null;
-async function load(){
-  if(!S.u)return;const uid=S.u.id,live=()=>S.u&&S.u.id===uid;
-  const p=await sb.from("pc_profiles").select("*").eq("id",uid).maybeSingle();if(!live())return;
-  if(p.data)S.me=p.data;else if(!p.error)S.me=null;
-  if(S.me&&S.me.role==="patient"&&!E)EX=S.me.doctor_id&&S.me.plan&&S.me.plan.items&&S.me.plan.items.length?S.me.plan.items:DEF;
-  const s=await sb.from("pc_sessions").select("data").eq("user_id",uid).order("ts",{ascending:false});if(!live())return;if(s.data)S.sessions=s.data.map(r=>r.data);
-  if(S.me&&S.me.role==="doctor"){
-    const q=await sb.from("pc_profiles").select("*").eq("doctor_id",uid);if(!live())return;if(q.data)S.pts=q.data;
-    if(S.sel){const z=await sb.from("pc_sessions").select("data").eq("user_id",S.sel).order("ts",{ascending:false});if(!live())return;if(z.data)S.selS=z.data.map(r=>r.data)}
-  }
-  render();
-}
-sb.auth.onAuthStateChange((ev,ses)=>{setTimeout(()=>{
-  const u=ses&&ses.user||null;
-  if(u&&S.u&&S.u.id===u.id){S.u=u;return}
-  clearInterval(poll);
-  if(!u){clearInterval(timer);clearInterval(btimer);try{S.wl&&S.wl.release()}catch(e){}if(B&&B.mq){try{B.mq.end(true)}catch(e){}}E=null;BR=null}
-  S.u=u;S.me=null;S.sessions=[];S.pts=[];S.sel=null;S.view="home";S.loaded=true;
-  if(!u)return render();
-  render();load();poll=setInterval(()=>{const f=document.activeElement;if(!E&&!BR&&!(f&&/INPUT|TEXTAREA|SELECT/.test(f.tagName)))load()},15000);
-},0)});
-function summary(a){const f=a.slice(0,7).filter(s=>s.feel);return{total:a.length,lastDate:(a.find(s=>s.fin>0)||a[0]).date,streak:streak(a),days7:[...daySet(a)].filter(d=>ago(d)<7).length,feelAvg:f.length?+(f.reduce((t,s)=>t+s.feel,0)/f.length).toFixed(1):0,lastPain:!!a[0].pain,ts:Date.now()}}
-x.save=async()=>{
-  const s={...S.pending,feel:S.fd.feel,pain:S.fd.pain,note:($("#note")?.value||S.note||"").slice(0,300)},all=[s,...S.sessions];
-  try{
-    const a=await sb.from("pc_sessions").insert({id:"s"+s.ts,user_id:S.u.id,ts:s.ts,data:s});if(a.error)throw a.error;
-    const b=await sb.from("pc_profiles").update({summary:summary(all)}).eq("id",S.u.id);if(b.error)throw b.error;
-    S.msg=S.me.doctor_id?"Saved. Your doctor can see this session.":"Saved to your history.";S.note="";S.view="home";
-  }catch(e){S.msg="Couldn’t save. Check your connection and press Save again."}
-  await load();
-};
+/* ---------- data (kept on this device) ---------- */
+const KEY="pelvicoach_v1";
+function persist(){try{localStorage.setItem(KEY,JSON.stringify({sessions:S.sessions,mode:S.me.mode}))}catch(e){}}
+(()=>{let d={};try{d=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}S.me={mode:d.mode==="bedridden"?"bedridden":"workout"};S.sessions=Array.isArray(d.sessions)?d.sessions:[]})();
+x.save=()=>{const s={...S.pending,feel:S.fd.feel,pain:S.fd.pain,note:($("#note")?.value||S.note||"").slice(0,300)};S.sessions=[s,...S.sessions];persist();S.msg="Saved on this device.";S.note="";S.view="home";render()};
 x.skipToday=()=>{S.pending={date:dk(),ts:Date.now(),mode:S.me.mode,fin:0,total:EX.length,secs:0,skip:1};S.fd={feel:0,pain:true};S.note="Skipped: reported pain, bleeding or discomfort before the session.";x.save()};
+x.setMode=v=>{S.me.mode=v;persist();render()};
 x.keepNote=()=>{S.note=$("#note")?.value||""};
 x.shareWeek=()=>{const a=S.sessions,d=[...daySet(a)].filter(k=>ago(k)<7).length,t="PelviCoach weekly summary: practised "+d+" of 7 days, "+streak(a)+"-day streak."+(a.some(s=>ago(s.date)<7&&s.pain)?" Discomfort was reported this week.":"");
   if(navigator.share){navigator.share({text:t}).catch(()=>{});return}
   try{navigator.clipboard.writeText(t);S.msg="Summary copied. Paste it into a message."}catch(e){S.msg=t}S.view="home";render()};
+x.export=()=>{const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"',rows=[["date","time","mode","done","total","minutes","feeling","discomfort","note"].join(",")];
+  S.sessions.forEach(s=>rows.push([s.date,new Date(s.ts).toLocaleTimeString(),s.mode,s.fin,s.total,Math.round(s.secs/60),FEEL[s.feel]||"",s.pain?"yes":"no",q(s.note)].join(",")));
+  const l=document.createElement("a");l.href=URL.createObjectURL(new Blob([rows.join("\n")],{type:"text/csv"}));l.download="pelvicoach-sessions.csv";l.click()};
+x.clear=()=>{if(confirm("Delete all saved sessions on this device?")){S.sessions=[];persist();render()}};
 
 /* ---------- workout mode engine ---------- */
 const dur=()=>E.ph==="ready"?3:E.ph==="squeeze"?EX[E.ei].work:EX[E.ei].rest;
@@ -177,79 +134,35 @@ function finishBio(){
   if(!log.length){S.view="home";return render()}
   S.pending={date:dk(),ts:Date.now(),mode:"bedridden",fin:ok,total:B.goal,secs:Math.round((performance.now()-B.t00)/1000),reps:log.map(r=>({r:r.res,t:r.tgt,h:r.hold,a:r.avg})),falseAvoided:log.filter(r=>r.fc).length};
   S.fd={feel:0,pain:false};S.note="";S.view="feel";render()}
-x.finishBio=finishBio;window.finishBio=finishBio;
+
 
 /* ---------- views ---------- */
 function render(){
   if(E||BR)return;
-  let h;
-  if(!S.loaded)h="<p>Loading…</p>";
-  else if(!S.u)h=authView();
-  else if(!S.me)h=`<h1>Setting up your account…</h1><p class="mute">If this doesn’t finish, sign out and try again.</p><button class="lnk" onclick="x.out()">Sign out</button>`;
-  else h=`<header><b>PelviCoach</b><span>${esc(S.me.name)} · ${S.me.role} <button class="lnk" onclick="x.out()">Sign out</button></span></header>`+(S.me.role==="doctor"?doctorView():patientView())+`<p class="disc">Prototype for exercise guidance. Not medical advice. Stop and tell your doctor if you feel pain.</p>`;
-  app.innerHTML=h;
+  app.innerHTML=`<header><b>PelviCoach</b></header>`+view()+`<p class="disc">Prototype for exercise guidance. Not medical advice. Stop and tell your doctor if you feel pain. Your sessions are saved on this device only.</p>`;
 }
-function authView(){const d=S.tab==="doctor",su=S.su;return`<h1>PelviCoach</h1><p class="mute">Pelvic floor rehabilitation, guided and tracked.</p>
-<div class="tabs"><button class="${!d?"on":""}" onclick="x.setTab('patient')">I’m a patient</button><button class="${d?"on":""}" onclick="x.setTab('doctor')">I’m a doctor</button></div>
-<div class="card"><h2>${su?"Create account":"Sign in"}</h2>
-${su?`<label>Full name<input id="nm" autocomplete="name"></label>`:""}
-<label>Email<input id="em" type="email" autocomplete="email"></label>
-<label>Password<input id="pw" type="password" autocomplete="${su?"new-password":"current-password"}"></label>
-${su?(d?`<label>Clinic code<input id="cc"></label>`:`<label>Doctor’s invite code (optional)<input id="ic" autocapitalize="characters"></label>`)+`<label class="chk"><input type="checkbox" id="cn">I understand this is a prototype for exercise guidance, not medical advice, and I agree to my exercise data being stored and shared with my doctor.</label>`:""}
-<p class="err" role="alert">${esc(S.err)}</p>
-<button class="btn" onclick="x.submit()">${su?"Create account":"Sign in"}</button>
-<button class="lnk" onclick="x.toggleSu()">${su?"I already have an account":"Create an account"}</button>
-${su?"":`<button class="lnk" onclick="x.reset()">Forgot password?</button>`}</div>`}
-function patientView(){
+const tabs=()=>`<div class="tabs">${[["home","Today"],["learn","Videos"],["hist","History"]].map(([k,l])=>`<button class="${S.view===k?"on":""}" onclick="S.view='${k}';render()">${l}</button>`).join("")}</div>`;
+function view(){
   const a=S.sessions,done=daySet(a).has(dk()),st=streak(a),bed=S.me.mode==="bedridden";
   if(S.view==="check")return`<h1>Before you begin</h1><div class="card"><p>Do you have any pain, bleeding or unusual discomfort today?</p><button class="btn ghost" onclick="x.skipToday()">Yes, I do</button><button class="btn" onclick="x.go()">No, I feel fine</button></div><button class="lnk" onclick="S.view='home';render()">Back</button>`;
-  if(S.view==="feel"){const f=S.fd;return`<h1>How did that feel?</h1><p class="mute">${S.me.doctor_id?"Your doctor will see this.":"This is saved to your own history."}</p>
+  if(S.view==="feel"){const f=S.fd;return`<h1>How did that feel?</h1><p class="mute">This is saved on this device.</p>
 <div class="feel">${[1,2,3].map(i=>`<button class="${f.feel===i?"sel":""}" onclick="S.fd.feel=${i};x.keepNote();render()">${FEEL[i]}</button>`).join("")}</div>
 <label class="chk"><input type="checkbox" ${f.pain?"checked":""} onchange="S.fd.pain=this.checked">I had discomfort or leakage</label>
-<textarea id="note" oninput="S.note=this.value" placeholder="Anything to tell your doctor? (optional)">${esc(S.note)}</textarea>
-<p class="err" role="alert">${esc(S.msg)}</p><button class="btn" ${f.feel?"":"disabled"} onclick="x.save()">Save my session</button>`}
-  const tabs=`<div class="tabs"><button class="${S.view==="home"?"on":""}" onclick="S.view='home';render()">Today</button><button class="${S.view==="hist"?"on":""}" onclick="S.view='hist';render()">My history</button></div>`;
-  if(S.view==="hist")return tabs+`<div class="card"><h2>Past sessions</h2><button class="btn ghost" onclick="x.shareWeek()">Share this week’s summary</button>${a.length?`<ul class="list">${a.map(s=>`<li><span>${when(s.ts)}<br><span class="mute">${s.skip?"Skipped (discomfort)":s.fin+" of "+s.total+(s.mode==="bedridden"?" good reps":" exercises")} · ${Math.round(s.secs/60)} min${s.note&&!s.skip?" · “"+esc(s.note)+"”":""}</span></span><b>${FEEL[s.feel]||""}${s.pain?" ⚑":""}</b></li>`).join("")}</ul>`:`<p class="mute">No sessions yet.</p>`}</div>`;
+<textarea id="note" oninput="S.note=this.value" placeholder="Any notes? (optional)">${esc(S.note)}</textarea>
+<button class="btn" ${f.feel?"":"disabled"} onclick="x.save()">Save my session</button>`}
+  if(S.view==="learn")return tabs()+`<h1>Videos</h1>${VIDEOS.map(v=>`<div class="card"><h2>${esc(v.title)}</h2><video src="${esc(v.src)}" controls preload="metadata" playsinline onerror="this.nextElementSibling.hidden=false"></video><p class="mute" hidden>Video not found. Upload it to your repository as <b>${esc(v.src)}</b>.</p></div>`).join("")}`;
+  if(S.view==="hist")return tabs()+`<div class="card"><h2>Past sessions</h2><div class="row"><button class="btn ghost" onclick="x.shareWeek()">Share weekly summary</button><button class="btn ghost" onclick="x.export()">Download CSV</button></div>${a.length?`<ul class="list">${a.map(s=>`<li><span>${when(s.ts)}<br><span class="mute">${s.skip?"Skipped (discomfort)":s.fin+" of "+s.total+(s.mode==="bedridden"?" good reps":" exercises")} · ${Math.round(s.secs/60)} min${s.note&&!s.skip?" · “"+esc(s.note)+"”":""}</span></span><b>${FEEL[s.feel]||""}${s.pain?" ⚑":""}</b></li>`).join("")}</ul>`:`<p class="mute">No sessions yet.</p>`}<button class="lnk" onclick="x.clear()">Delete all my sessions</button></div>`;
   const wk=[6,5,4,3,2,1,0].map(i=>{const d=back(i);return`<div class="day">${d.toLocaleDateString(undefined,{weekday:"narrow"})}<i class="${daySet(a).has(dk(d))?"on":""} ${i===0?"today":""}"></i></div>`}).join("");
-  const miss=!done&&a.length&&ago((a.find(s=>s.fin>0)||a[0]).date)>=1,paused=S.me.doctor_id&&S.me.plan&&S.me.plan.paused;
-  return tabs+`<div class="card hero">${flower()}<div><h1>${done?"Well done today":"Time for your session"}</h1><p>${st?st+"-day streak":"Start your streak today"}</p></div></div>
+  const miss=!done&&a.length&&ago((a.find(s=>s.fin>0)||a[0]).date)>=1;
+  return tabs()+`<div class="card hero">${flower()}<div><h1>${done?"Well done today":"Time for your session"}</h1><p>${st?st+"-day streak":"Start your streak today"}</p></div></div>
 ${S.msg?`<div class="nudge">${esc(S.msg)}</div>`:""}
 ${miss?`<div class="nudge">You haven’t done today’s session yet. It only takes a few minutes.</div>`:""}
 ${a[0]&&a[0].skip&&a[0].date===dk()?`<div class="nudge">You reported discomfort today. Please rest and contact your doctor.</div>`:""}
 <div class="card"><h2>This week</h2><div class="week">${wk}</div></div>
 <div class="card"><h2>${bed?"Today’s session":"Today’s exercises"}</h2><div class="tabs" style="margin-bottom:8px"><button class="${bed?"":"on"}" onclick="x.setMode('workout')">Workout</button><button class="${bed?"on":""}" onclick="x.setMode('bedridden')">Bedridden</button></div>
 ${bed?`<p>Guided biofeedback with live squeeze feedback, from the simulator or your sensor.</p>`:`<ul class="list">${EX.map(q=>`<li><span>${esc(q.n)}</span><span class="mute">${q.work?q.reps+" × "+q.work+"s":q.rest+"s"}</span></li>`).join("")}</ul>`}
-${paused?`<div class="nudge">Your doctor has paused your plan. Rest today and check back soon.</div>`:`<button class="btn" onclick="S.view='check';render()">${done?"Do it again":"Start today’s session"}</button>`}
-${bed?"":`<button class="lnk" onclick="S.snd=!S.snd;render()">Sound cues: ${S.snd?"on":"off"}</button>`}</div>${docCard()}`;
+<button class="btn" onclick="S.msg='';S.view='check';render()">${done?"Do it again":"Start today’s session"}</button>
+${bed?"":`<button class="lnk" onclick="S.snd=!S.snd;render()">Sound cues: ${S.snd?"on":"off"}</button>`}</div>`;
 }
-function docCard(){return S.me.doctor_id?`<div class="card"><h2>Your doctor</h2><p class="mute">Linked. They can see your sessions and feedback${S.me.plan?" and have set your plan":""}.</p><button class="btn ghost" onclick="x.unlink()">Unlink my doctor</button></div>`:`<div class="card"><h2>Link a doctor (optional)</h2><p class="mute">Enter your doctor’s invite code so they can follow your progress.</p><label>Invite code<input id="lc" autocapitalize="characters"></label><p class="err" role="alert">${esc(S.lerr||"")}</p><button class="btn ghost" onclick="x.link()">Link my doctor</button></div>`}
-x.link=async()=>{const c=$("#lc").value.trim();if(!c){S.lerr="Type the invite code first.";return render()}const r=await sb.rpc("pc_link_doctor",{code:c});S.lerr=r.error?"Couldn’t link. Try again.":r.data?"":"That invite code wasn’t found.";if(r.data)S.msg="Doctor linked.";await load()};
-x.unlink=async()=>{if(!confirm("Unlink your doctor? They will no longer see your sessions."))return;await sb.rpc("pc_link_doctor",{code:null});S.msg="Doctor unlinked.";await load()};
-x.setMode=async v=>{if(S.me.mode===v)return;const r=await sb.from("pc_profiles").update({mode:v}).eq("id",S.u.id);if(!r.error)S.me.mode=v;await load()};
-const status=p=>{const s=p.summary;if(!s)return["No sessions yet","bad"];const g=ago(s.lastDate);return g===0?["Done today","ok"]:g===1?["Due today",""]:["Missed "+g+" days","bad"]};
-function doctorView(){
-  const code=`<div class="card"><p class="mute">Give this invite code to your patients</p><h1 style="letter-spacing:.1em">${esc(S.me.invite_code)}</h1></div>`;
-  if(S.sel){const p=S.pts.find(q=>q.id===S.sel)||{},s=p.summary||{},a=S.selS,[t,c]=status(p),d=S.draft||DEF;
-    const bars=[13,12,11,10,9,8,7,6,5,4,3,2,1,0].map(i=>{const k=dk(back(i)),m=a.filter(z=>z.date===k).reduce((n,z)=>n+z.secs,0)/60;return`<i class="${m?"":"z"}" style="height:${Math.min(100,m*20)}%" title="${k}"></i>`}).join("");
-    const d14=new Set(a.filter(z=>z.fin>0&&ago(z.date)<14).map(z=>z.date)).size,cr=a.length?Math.round(a.reduce((n,z)=>n+z.fin/z.total,0)/a.length*100):0;
-    return`<button class="lnk" onclick="x.sel(null)">‹ All patients</button><h1>${esc(p.name||"Patient")}</h1><span class="chip ${c}">${t}</span>
-<div class="grid" style="margin-top:12px"><div class="stat"><b>${s.streak||0}</b>day streak</div><div class="stat"><b>${d14} / 14</b>days practised</div><div class="stat"><b>${cr}%</b>completed</div><div class="stat"><b>${s.feelAvg||"–"} / 3</b>average feeling</div></div>
-<div class="card"><h2>Patient mode</h2><p class="mute">The patient can also change this themselves.</p><select onchange="x.mode(this.value)"><option value="workout" ${p.mode!=="bedridden"?"selected":""}>Workout (can move around)</option><option value="bedridden" ${p.mode==="bedridden"?"selected":""}>Bedridden (biofeedback)</option></select><p class="mute">${esc(S.pm||"")}</p></div>
-<div class="card"><h2>Workout plan</h2><p class="mute">${p.plan?(p.plan.paused?"Paused for this patient.":"Custom plan."):"Default plan."} A hold of 0 makes a relax-only step.</p>
-${d.map((q,i)=>`<div><b>${esc(q.n)}</b><div class="pr"><label>Reps<input type="number" inputmode="numeric" value="${q.reps}" onchange="x.pe(${i},'reps',this.value)"></label><label>Hold (s)<input type="number" inputmode="numeric" value="${q.work}" onchange="x.pe(${i},'work',this.value)"></label><label>Rest (s)<input type="number" inputmode="numeric" value="${q.rest}" onchange="x.pe(${i},'rest',this.value)"></label></div></div>`).join("")}
-<button class="btn" onclick="x.plan(false)">Save plan</button><button class="btn ghost" onclick="x.plan(true)">${p.plan&&p.plan.paused?"Resume plan":"Pause plan"}</button><button class="lnk" onclick="S.draft=clone(DEF);render()">Reset to default</button></div>
-<div class="card"><h2>Minutes per day, last 14 days</h2><div class="bars">${bars}</div></div>
-<div class="card"><h2>Sessions and feedback</h2>${a.length?`<ul class="list">${a.map(z=>`<li><span>${when(z.ts)}<br><span class="mute">${z.skip?"Skipped (discomfort)":(z.mode==="bedridden"?"Biofeedback · ":"")+z.fin+" of "+z.total+" · "+Math.round(z.secs/60)+" min"}${z.note?"<br>“"+esc(z.note)+"”":""}</span></span><b>${FEEL[z.feel]||""}${z.pain?" ⚑":""}</b></li>`).join("")}</ul><p class="mute">⚑ marks discomfort or leakage reported.</p>`:`<p class="mute">No sessions yet.</p>`}</div>`}
-  const L=[...S.pts].sort((p,q)=>((p.summary&&p.summary.lastDate)||"").localeCompare((q.summary&&q.summary.lastDate)||""));
-  return code+`<h2>Your patients</h2>${L.length?L.map(p=>{const[t,c]=status(p),s=p.summary||{};return`<button class="card pcard" onclick="x.sel('${esc(p.id)}')"><b>${esc(p.name)}</b> <span class="chip ${c}">${t}</span><p class="mute">${p.mode==="bedridden"?"Bedridden mode":"Workout mode"} · ${s.streak||0}-day streak · ${s.days7||0} of 7 days${s.lastPain?" · ⚑ discomfort":""}</p></button>`}).join(""):`<div class="card"><p>No patients yet. Share your invite code above.</p></div>`}`;
-}
-const LIM={reps:[1,30],work:[0,30],rest:[1,60]};
-x.sel=async id=>{S.sel=id;S.selS=[];S.pm="";
-  if(id){const p=S.pts.find(q=>q.id===id)||{};S.draft=clone(p.plan&&p.plan.items&&p.plan.items.length?p.plan.items:DEF)}
-  render();await load()};
-x.pe=(i,k,v)=>{const q=S.draft[i],[a,b]=LIM[k];q[k]=cl(Math.round(+v)||a,a,b);if(!q.work)q.reps=1;if(k==="work"||k==="reps")render()};
-x.plan=async paused=>{const p=S.pts.find(q=>q.id===S.sel)||{},pz=paused?!(p.plan&&p.plan.paused):!!(p.plan&&p.plan.paused);
-  const r=await sb.rpc("pc_set_patient",{pid:S.sel,new_mode:null,new_plan:{items:S.draft,paused:pz}});
-  S.pm=r.error?"Couldn’t save the plan.":paused?(pz?"Plan paused.":"Plan resumed."):"Plan saved.";await load()};
-x.mode=async v=>{const r=await sb.rpc("pc_set_patient",{pid:S.sel,new_mode:v,new_plan:null});S.pm=r.error?"Couldn’t change the mode.":"Mode updated. The patient sees it next time they open the app.";await load()};
-window.S=S;window.render=render;window.clone=clone;window.DEF=DEF;
+x.finishBio=finishBio;window.finishBio=finishBio;window.S=S;window.render=render;window.clone=clone;window.DEF=DEF;
+render();

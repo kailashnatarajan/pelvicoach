@@ -1,5 +1,8 @@
-// Supabase dashboard > Project Settings > API: paste the Project URL and the "anon public" key.
-export const SUPABASE_URL = "https://irspewibfkuogsvttnfi.supabase.co";
-export const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlyc3Bld2liZmt1b2dzdnR0bmZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzg0NjUsImV4cCI6MjEwODYxNDQ2NX0.VHVVJuAzEG_M-nu1nr_inP_JuQIJBVUSVhCFtB3BTrk";
-// Same broker and topic your Wokwi ESP32 already publishes to.
+// Two videos stored in your GitHub repository (upload them into the "videos" folder).
+// Change the title or file name here if you want. Use .mp4 (H.264) so every phone can play it.
+export const VIDEOS = [
+  { title: "Video 1: How to find your pelvic floor muscles", src: "videos/video1.mp4" },
+  { title: "Video 2: How to do the exercises correctly",     src: "videos/video2.mp4" }
+];
+// Same broker and topic your Wokwi ESP32 publishes to (used by the Bedridden mode's live sensor option).
 export const MQTT = { url: "wss://broker.hivemq.com:8884/mqtt", topic: "medaithon/pfm13/win" };
