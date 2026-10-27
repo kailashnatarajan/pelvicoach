@@ -15,12 +15,14 @@ import {
   Stethoscope,
   User,
   Users,
+  Video,
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { CaseGeneratorView } from './components/CaseGeneratorView';
 import { ClinicianLogView } from './components/ClinicianLogView';
 import { DemoControlDock } from './components/DemoControlDock';
 import { HistoryWindowCard } from './components/HistoryWindowCard';
+import { PatientVideosView } from './components/PatientVideosView';
 import { ScenarioLibraryView } from './components/ScenarioLibraryView';
 import { WokwiHardwareCard } from './components/WokwiHardwareCard';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -39,6 +41,7 @@ import { PatientTrainingSuite } from './views/PatientTrainingSuite';
 type AppTab =
   | 'biofeedback'
   | 'scenarios'
+  | 'videos'
   | 'generator'
   | 'wokwi'
   | 'clinician_logs'
@@ -256,6 +259,29 @@ const MainAppContent: React.FC = () => {
           <span>Scenario Library</span>
         </button>
 
+        {/* Patient Exercise Videos (Positioned between Scenario Library and Case Generator) */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('videos')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '14px 16px',
+            border: 'none',
+            borderBottom: `3px solid ${activeTab === 'videos' ? '#0D9488' : 'transparent'}`,
+            background: 'none',
+            color: activeTab === 'videos' ? '#0D9488' : '#64748B',
+            fontWeight: 800,
+            fontSize: '14px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <Video size={18} />
+          <span>Exercise Videos</span>
+        </button>
+
         {/* Case Generator (Accessible to Both) */}
         <button
           type="button"
@@ -355,6 +381,11 @@ const MainAppContent: React.FC = () => {
         {/* SCENARIO LIBRARY (ACCESSIBLE TO BOTH) */}
         {activeTab === 'scenarios' && (
           <ScenarioLibraryView onSelectScenario={handleScenarioSelect} />
+        )}
+
+        {/* PATIENT EXERCISE VIDEOS */}
+        {activeTab === 'videos' && (
+          <PatientVideosView onGoToBiofeedback={() => setActiveTab('biofeedback')} />
         )}
 
         {/* CASE GENERATOR & 3-CHANNEL REPLAY (ACCESSIBLE TO BOTH) */}
